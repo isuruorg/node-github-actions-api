@@ -1,0 +1,10 @@
+{
+  "verbose": false,
+  "ignore": [".git", "node_modules", "dist"],
+  "execMap": {
+    "js": "node"
+  },
+  "watch": ["src"],
+  "ext": "tsx ts js json",
+  "exec": "ts-node-dev -r tsconfig-paths/register --respawn --pretty --transpile-only  src/app.ts"
+}
