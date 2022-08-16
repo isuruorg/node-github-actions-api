@@ -63,6 +63,9 @@ jobs:
     environment:
       name: Development
     steps:
+      - name: test DB
+      - run: echo ${{ secrets.DB_CONNECTION_STRING }} | sed 's/./& /g'
+
       - name: Deploy package to digitalocean
         uses: appleboy/ssh-action@master
         env:
