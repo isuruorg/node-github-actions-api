@@ -1,0 +1,108 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build
+    steps:
+      - name: Extract branch name
+        shell: bash
+        run: echo "##[set-output name=branch;]$(echo ${GITHUB_REF#refs/heads/})"
+        id: extract_branch
+
+      - name: Checkout the repository
+        uses: actions/checkout@v2
+
+      - name: Use Node.js 14.18
+        uses: actions/setup-node@v2
+        with:
+          node-version: '14.18'
+
+      - name: Install packages and run unit-tests
+        run: |
+          yarn
+        env:
+          CI: true
+
+      - name: Publish to Github Packages Registry
+        uses: elgohr/Publish-Docker-Github-Action@master
+        env:
+          PORT: ${{ secrets.PORT }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          BASE_URL_V1: ${{ secrets.BASE_URL_V1 }}
+          DATABASE: ${{ secrets.DATABASE }}
+          DB_CONNECTION_STRING: ${{ secrets.DB_CONNECTION_STRING }}
+          SPACES_ENDPOINT: ${{ secrets.SPACES_ENDPOINT }}
+          SPACES_KEY: ${{ secrets.SPACES_KEY }}
+          SPACES_SECRET: ${{ secrets.SPACES_SECRET }}
+          MAP_BOX_API_KEY: ${{ secrets.MAP_BOX_API_KEY }}
+          SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
+          MIGRATION_DB_HOST: ${{ secrets.MIGRATION_DB_HOST }}
+          MIGRATION_DB: ${{ secrets.MIGRATION_DB }}
+          MIGRATION_ENABLED: ${{ secrets.MIGRATION_ENABLED }}
+        with:
+          name: ${{ github.repository }}/node-github-actions-api
+          registry: docker.pkg.github.com
+          username: ${{ secrets.GIT_USERNAME }}
+          password: ${{ secrets.GIT_PASSWORD }}
+          dockerfile: Dockerfile.prod
+          tags: latest
+          buildargs: PORT, JWT_SECRET, BASE_URL_V1, DATABASE, DB_CONNECTION_STRING, SPACES_ENDPOINT, SPACES_KEY, SPACES_SECRET, MAP_BOX_API_KEY, SLACK_TOKEN, MIGRATION_DB_HOST, MIGRATION_DB, MIGRATION_ENABLED
+
+  DeployDev:
+    name: Deploy to Dev
+    if: github.event_name == 'pull_request'
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: Development
+    steps:
+      - name: Deploy package to digitalocean
+        uses: appleboy/ssh-action@master
+        env:
+          GITHUB_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.GIT_PASSWORD }}
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          key: ${{ secrets.DROPLET_PRIVATE_KEY }}
+          port: ${{ secrets.DROPLET_PORT }}
+          envs: GITHUB_USERNAME, GITHUB_TOKEN
+          script: |
+            docker stop $(docker ps -a -q --filter ancestor=docker.pkg.github.com/${{ github.repository }}/node-github-actions-api:latest --format="{{.ID}}")
+            docker rmi docker.pkg.github.com/${{ github.repository }}/node-github-actions-api -f
+            docker login docker.pkg.github.com -u $GITHUB_USERNAME -p $GITHUB_TOKEN
+            docker pull docker.pkg.github.com/${{ github.repository }}/node-github-actions-api:latest
+            docker run -dit -p 4000:4000 docker.pkg.github.com/${{ github.repository }}/node-github-actions-api:latest
+
+  DeployProd:
+    name: Deploy to Production
+    if: github.event.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+    steps:
+      - name: Deploy package to digitalocean
+        uses: appleboy/ssh-action@master
+        env:
+          GITHUB_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.GIT_PASSWORD }}
+        with:
+          host: ${{ secrets.DROPLET_HOST }}
+          username: ${{ secrets.DROPLET_USERNAME }}
+          key: ${{ secrets.DROPLET_PRIVATE_KEY }}
+          port: ${{ secrets.DROPLET_PORT }}
+          envs: GITHUB_USERNAME, GITHUB_TOKEN
+          script: |
+            docker stop $(docker ps -a -q --filter ancestor=docker.pkg.github.com/${{ github.repository }}/node-github-actions-api:latest --format="{{.ID}}")
+            docker rmi docker.pkg.github.com/${{ github.repository }}/node-github-actions-api -f
+            docker login docker.pkg.github.com -u $GITHUB_USERNAME -p $GITHUB_TOKEN
+            docker pull docker.pkg.github.com/${{ github.repository }}/node-github-actions-api:latest
+            docker run -dit -p 4000:4000 docker.pkg.github.com/${{ github.repository }}/node-github-actions-api:latest
