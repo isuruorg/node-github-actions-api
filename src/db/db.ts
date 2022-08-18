@@ -17,7 +17,7 @@ function connect() {
         console.log(`Database-${process.env.NODE_ENV} connected`);
       })
       .catch(error => {
-        console.log('db error:', error);
+        console.log('db error:', error, process.env.DB_CONNECTION_STRING);
         process.exit(1);
       })
   );
